@@ -1,0 +1,8 @@
+import { Router } from "express";
+import { randomUUID } from "node:crypto";
+import { initDb } from "../core/db.js";
+import { requireAuth } from "../middleware/auth.js";
+const router=Router();
+router.post("/:listingId",requireAuth,async(req,res)=>{try{const db=await initDb();const listing=await db.query("SELECT id,name,version,status FROM agent_listings WHERE id=$1 AND status='published'",[req.params.listingId]);if(!listing.rowCount)return res.status(404).json({error:"published listing not found"});const id=randomUUID();await db.query("INSERT INTO agent_installs (id,listing_id,user_id) VALUES ($1,$2,$3) ON CONFLICT(listing_id,user_id) DO UPDATE SET status='active'",[id,req.params.listingId,(req as any).userId]);res.status(201).json({id,listing:listing.rows[0],status:"active"});}catch{res.status(400).json({error:"failed to install agent"});}});
+router.get("/mine",requireAuth,async(req,res)=>{try{const r=await initDb().query("SELECT i.id,i.status,i.created_at,a.id AS listing_id,a.name,a.version FROM agent_installs i JOIN agent_listings a ON a.id=i.listing_id WHERE i.user_id=$1 ORDER BY i.created_at DESC",[(req as any).userId]);res.json({installs:r.rows});}catch{res.status(500).json({error:"failed to load installs"});}});
+export default router;
