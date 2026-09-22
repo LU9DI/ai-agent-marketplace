@@ -1,16 +1,14 @@
-CREATE TABLE IF NOT EXISTS app_users (id UUID PRIMARY KEY,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now());
-CREATE INDEX IF NOT EXISTS idx_app_users_email ON app_users(email);
-CREATE TABLE IF NOT EXISTS agent_listings (
-  id UUID PRIMARY KEY,
-  owner_id UUID NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
-  name TEXT NOT NULL,
-  description TEXT NOT NULL,
-  version TEXT NOT NULL,
-  price_cents INTEGER,
-  capabilities JSONB NOT NULL DEFAULT '[]'::jsonb,
-  status TEXT NOT NULL DEFAULT 'draft',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+CREATE TABLE IF NOT EXISTS app_users (
+  id UUID PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_agent_listings_owner ON agent_listings(owner_id, updated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_agent_listings_status ON agent_listings(status, updated_at DESC);
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+CREATE INDEX IF NOT EXISTS idx_app_users_email ON app_users(email);
+
+CREATE TABLE IF NOT EXISTS agent_listings (
+  id UUID PRIMARY KEY, owner_id UUID NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL, description TEXT NOT NULL, version TEXT NOT NULL, price_cents INTEGER,
+  capabilities JSONB NOT NULL DEFAULT '[]'::jsonb, status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','published','suspended')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_agent_listings_owner_updated ON agent_listings(owner_id,updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_listings_status_updated ON agent_listings(status,updated_at DESC);
