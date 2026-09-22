@@ -3,6 +3,7 @@ import agentRoutes from "./src/routes/agentRoutes.js";
 import installRoutes from "./src/routes/installRoutes.js";
 import reviewRoutes from "./src/routes/reviewRoutes.js";
 import express from "express";
+import acquisitionRoutes from "./src/routes/acquisitionRoutes.js";
 import cors from "cors";
 import { initDb } from "./src/core/db.js";
 import { metricsMiddleware, metricsSnapshot } from "./src/core/metrics.js";
