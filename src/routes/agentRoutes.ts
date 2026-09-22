@@ -1,6 +1,10 @@
 import { Router } from "express";
+import { randomUUID } from "node:crypto";
 import { prepareListing } from "../services/agentService.js";
+import { initDb } from "../core/db.js";
 import { requireAuth } from "../middleware/auth.js";
 const router=Router();
+router.post("/",requireAuth,async(req,res)=>{try{const a=prepareListing(req.body);const id=randomUUID();await initDb().query("INSERT INTO agent_listings (id,owner_id,name,description,version,price_cents,capabilities) VALUES ($1,$2,$3,$4,$5,$6,$7)",[id,(req as any).userId,a.name,a.description,a.version,a.priceCents??null,JSON.stringify(a.capabilities||[])]);res.status(201).json({id,listing:a,status:"draft"});}catch(e){res.status(400).json({valid:false,error:e instanceof Error?e.message:"invalid agent listing"});}});
+router.get("/",async(_req,res)=>{try{const r=await initDb().query("SELECT id,owner_id,name,description,version,price_cents,capabilities,status,created_at,updated_at FROM agent_listings WHERE status='published' ORDER BY updated_at DESC LIMIT 100");res.json({listings:r.rows});}catch{res.status(500).json({error:"failed to load listings"});}});
 router.post("/validate",requireAuth,(req,res)=>{try{res.json({valid:true,listing:prepareListing(req.body)});}catch(e){res.status(400).json({valid:false,error:e instanceof Error?e.message:"invalid agent listing"});}});
 export default router;
