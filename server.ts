@@ -36,6 +36,8 @@ app.use("/api/agents", agentRoutes);
 app.use("/api/installs", installRoutes);
 app.use("/api/reviews", reviewRoutes);
 
+app.use("/api/acquisition", acquisitionRoutes);
+
 app.get("/api/health", async (_req, res) => {
   try { await initDb().query("SELECT 1"); res.json({ ok: true, service: "ai-agent-marketplace", database: "ok" }); }
   catch { res.status(503).json({ ok: false, database: "error" }); }
