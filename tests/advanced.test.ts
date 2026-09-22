@@ -1,0 +1,2 @@
+import { test } from "node:test"; import assert from "node:assert/strict"; import { prepareListing } from "../src/services/agentService.js";
+test("prepares a valid marketplace listing",()=>{const x=prepareListing({name:"Agent",description:"Useful agent",ownerId:"u",version:"1.0.0",capabilities:["chat"],priceCents:999});assert.equal(x.priceCents,999);});
