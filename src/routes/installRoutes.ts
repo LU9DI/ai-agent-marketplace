@@ -10,11 +10,10 @@ const parseOffset=(v:unknown)=>{const n=Number(v??0);return Number.isInteger(n)&
 
 router.post("/:listingId",requireAuth,async(req,res)=>{try{
   if(!UUID.test(String(req.params.listingId)))return res.status(400).json({error:"invalid listing id"});
-  const db=initDb();const userId=(req as any).userId;const client=await db.connect();
-  try{await client.query("BEGIN");await client.query("SELECT pg_advisory_xact_lock(hashtext($1))",[String(userId)+":installs"]);
-  const count=await client.query("SELECT COUNT(*)::int count FROM agent_installs WHERE user_id=$1 AND status='active'",[userId]);if(Number(count.rows[0].count)>=MAX_INSTALLS_PER_USER){await client.query("ROLLBACK");return res.status(429).json({error:"installation limit reached",limit:MAX_INSTALLS_PER_USER});}
-  const listing=await client.query("SELECT id,name,version,status FROM agent_listings WHERE id=$1 AND status='published'",[req.params.listingId]);
-  if(!listing.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"published listing not found"});}
+  const db=initDb();const userId=(req as any).userId;
+  const count=await db.query("SELECT COUNT(*)::int count FROM agent_installs WHERE user_id=$1",[userId]);if(Number(count.rows[0].count)>=MAX_INSTALLS_PER_USER)return res.status(429).json({error:"installation limit reached",limit:MAX_INSTALLS_PER_USER});
+  const listing=await db.query("SELECT id,name,version,status FROM agent_listings WHERE id=$1 AND status='published'",[req.params.listingId]);
+  if(!listing.rowCount)return res.status(404).json({error:"published listing not found"});
   const id=randomUUID();
   const r=await db.query("INSERT INTO agent_installs (id,listing_id,user_id) VALUES ($1,$2,$3) ON CONFLICT(listing_id,user_id) DO UPDATE SET status='active' RETURNING id,status,created_at",[id,req.params.listingId,userId]);
   res.status(201).json({id:r.rows[0].id,listing:listing.rows[0],status:r.rows[0].status,createdAt:r.rows[0].created_at});
