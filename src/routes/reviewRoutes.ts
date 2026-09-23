@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { initDb } from "../core/db.js";
 import { requireAuth } from "../middleware/auth.js";
-import { initDb as db } from "../core/db.js";
 const router=Router();
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const parseLimit=(v:unknown)=>{const n=Number(v??20);return Number.isInteger(n)&&n>=1&&n<=100?n:20;};
@@ -12,7 +11,9 @@ router.post("/:listingId",requireAuth,async(req,res)=>{try{const rating=Number(r
 router.get("/:listingId",async(req,res)=>{try{
   if(!UUID.test(String(req.params.listingId)))return res.status(400).json({error:"invalid listing id"});
   const limit=parseLimit(req.query.limit),offset=parseOffset(req.query.offset);
-  const r=await db().query("SELECT rating,comment,created_at FROM agent_reviews WHERE listing_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",[req.params.listingId,limit,offset]);
+  const listing=await initDb().query("SELECT id FROM agent_listings WHERE id=$1 AND status='published'",[req.params.listingId]);
+  if(!listing.rowCount)return res.status(404).json({error:"published listing not found"});
+  const r=await initDb().query("SELECT rating,comment,created_at FROM agent_reviews WHERE listing_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",[req.params.listingId,limit,offset]);
   const count=await db().query("SELECT COUNT(*)::int AS count,COALESCE(AVG(rating),0)::float AS average FROM agent_reviews WHERE listing_id=$1",[req.params.listingId]);
   res.json({averageRating:Math.round(Number(count.rows[0].average)*100)/100,count:Number(count.rows[0].count),reviews:r.rows,pagination:{limit,offset,hasMore:offset+r.rows.length<Number(count.rows[0].count)}});
 }catch{res.status(500).json({error:"failed to load reviews"});}});
