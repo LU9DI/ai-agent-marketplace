@@ -14,7 +14,7 @@ router.get("/:listingId",async(req,res)=>{try{
   const listing=await initDb().query("SELECT id FROM agent_listings WHERE id=$1 AND status='published'",[req.params.listingId]);
   if(!listing.rowCount)return res.status(404).json({error:"published listing not found"});
   const r=await initDb().query("SELECT rating,comment,created_at FROM agent_reviews WHERE listing_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",[req.params.listingId,limit,offset]);
-  const count=await db().query("SELECT COUNT(*)::int AS count,COALESCE(AVG(rating),0)::float AS average FROM agent_reviews WHERE listing_id=$1",[req.params.listingId]);
+  const count=await initDb().query("SELECT COUNT(*)::int AS count,COALESCE(AVG(rating),0)::float AS average FROM agent_reviews WHERE listing_id=$1",[req.params.listingId]);
   res.json({averageRating:Math.round(Number(count.rows[0].average)*100)/100,count:Number(count.rows[0].count),reviews:r.rows,pagination:{limit,offset,hasMore:offset+r.rows.length<Number(count.rows[0].count)}});
 }catch{res.status(500).json({error:"failed to load reviews"});}});
 export default router;
