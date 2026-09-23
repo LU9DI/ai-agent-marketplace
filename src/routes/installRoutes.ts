@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { initDb } from "../core/db.js";
 import { requireAuth } from "../middleware/auth.js";
 const router=Router();
+const MAX_INSTALLS_PER_USER=500;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const parseLimit=(v:unknown)=>{const n=Number(v??20);return Number.isInteger(n)&&n>=1&&n<=100?n:20;};
 const parseOffset=(v:unknown)=>{const n=Number(v??0);return Number.isInteger(n)&&n>=0&&n<=100000?n:0;};
@@ -10,6 +11,7 @@ const parseOffset=(v:unknown)=>{const n=Number(v??0);return Number.isInteger(n)&
 router.post("/:listingId",requireAuth,async(req,res)=>{try{
   if(!UUID.test(String(req.params.listingId)))return res.status(400).json({error:"invalid listing id"});
   const db=initDb();const userId=(req as any).userId;
+  const count=await db.query("SELECT COUNT(*)::int count FROM agent_installs WHERE user_id=$1",[userId]);if(Number(count.rows[0].count)>=MAX_INSTALLS_PER_USER)return res.status(429).json({error:"installation limit reached",limit:MAX_INSTALLS_PER_USER});
   const listing=await db.query("SELECT id,name,version,status FROM agent_listings WHERE id=$1 AND status='published'",[req.params.listingId]);
   if(!listing.rowCount)return res.status(404).json({error:"published listing not found"});
   const id=randomUUID();
