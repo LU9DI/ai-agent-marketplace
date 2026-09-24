@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { initDb } from "../core/db.js";
 
-export async function installAgent(listingId:string,userId:string){
- const db=initDb();
+export async function installAgent(listingId:string,userId:string,client?:any){
+ const db=client??initDb();
  const a=await db.query("SELECT id,version,status FROM agent_listings WHERE id=$1 AND status='published'",[listingId]);
  if(!a.rowCount)return null;
  const v=await db.query("SELECT id FROM agent_versions WHERE agent_id=$1 AND version=$2",[listingId,a.rows[0].version]);
