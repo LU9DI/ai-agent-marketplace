@@ -40,5 +40,5 @@ try {
 } finally {
   await client.query("SELECT pg_advisory_unlock(hashtext('application_migrations'))").catch(() => {});
   client.release();
-  await db.end();
+  // Keep the shared pool alive for the server process that follows migration.
 }
