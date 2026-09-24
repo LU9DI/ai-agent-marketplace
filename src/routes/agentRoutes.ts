@@ -28,7 +28,7 @@ router.post("/:id/install",requireAuth,async(req,res)=>{
       const count=await client.query("SELECT COUNT(*)::int count FROM agent_installs WHERE user_id=$1 AND status='active'",[userId]);
       const ent=await client.query("SELECT e.enabled,e.limit_value FROM app_users u LEFT JOIN plan_entitlements e ON e.plan=u.plan AND e.feature=$2 WHERE u.id=$1 FOR UPDATE OF u",[userId,"agent_installs"]);
       const row=ent.rows[0]; assertEntitlement({allowed:row.enabled!==false,limit:row.limit_value==null?null:Number(row.limit_value),plan:""}, "agent_installs",Number(count.rows[0].count));
-      const install=await installAgent(String(req.params.id),userId); if(!install)throw Object.assign(new Error("published agent not found"),{code:"NOT_FOUND"});
+      const install=await installAgent(String(req.params.id),userId,client); if(!install)throw Object.assign(new Error("published agent not found"),{code:"NOT_FOUND"});
       return {install};
     });
     await audit(userId,"agent.installed","agent_install",result.install.id,{listingId:String(req.params.id)});
