@@ -4,7 +4,7 @@ import { initDb } from "../core/db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { prepareListing } from "../services/agentService.js";
 import { installAgent } from "../services/installService.js";
-import { audit, EntitlementError, enforceLimit, getEntitlement } from "../core/platformGovernance.js";
+import { audit, EntitlementError, enforceLimit, getEntitlement, reserveIdempotency, completeIdempotency, withEntitlementLock, assertEntitlement } from "../core/platformGovernance.js";
 const router=Router();
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const parseLimit=(v:unknown)=>{const n=Number(v??20);return Number.isInteger(n)&&n>=1&&n<=100?n:20;};
@@ -16,7 +16,25 @@ router.get("/",async(req,res)=>{try{const q=String(req.query.q||"").trim();const
 
 router.get("/mine",requireAuth,async(req,res)=>{try{const limit=parseLimit(req.query.limit),offset=parseOffset(req.query.offset),db=initDb();const r=await db.query("SELECT id,name,description,version,price_cents,capabilities,status,created_at,updated_at FROM agent_listings WHERE owner_id=$1 ORDER BY updated_at DESC LIMIT $2 OFFSET $3",[(req as any).userId,limit,offset]);const count=await db.query("SELECT COUNT(*)::int count FROM agent_listings WHERE owner_id=$1",[(req as any).userId]);res.json({agents:r.rows,pagination:{limit,offset,total:Number(count.rows[0].count),hasMore:offset+r.rows.length<Number(count.rows[0].count)}});}catch{res.status(500).json({error:"failed to load owned agents"});}});
 
-router.post("/:id/install",requireAuth,async(req,res)=>{try{if(!UUID.test(String(req.params.id)))return res.status(400).json({error:"invalid agent id"});const count=await initDb().query("SELECT COUNT(*)::int count FROM agent_installs WHERE user_id=$1 AND status='active'",[(req as any).userId]);await enforceLimit((req as any).userId,"agent_installs",Number(count.rows[0].count));const install=await installAgent(String(req.params.id),(req as any).userId);if(!install)return res.status(404).json({error:"published agent not found"});await audit((req as any).userId,"agent.installed","agent_install",install.id,{listingId:String(req.params.id)});res.status(201).json({install});}catch(error){if(error instanceof EntitlementError)return res.status(429).json({error:"agent installation plan limit reached",feature:error.feature,limit:error.limit});res.status(500).json({error:"failed to install agent"});}});
+router.post("/:id/install",requireAuth,async(req,res)=>{
+  const userId=(req as any).userId, idem=String(req.get("Idempotency-Key")||"").trim();
+  try{
+    if(!UUID.test(String(req.params.id)))return res.status(400).json({error:"invalid agent id"});
+    if(!idem||idem.length>200)return res.status(400).json({error:"invalid idempotency key"});
+    const reservation=await reserveIdempotency(userId,"agent.install",idem);
+    if(reservation?.replay)return res.status(reservation.statusCode).json(reservation.response);
+    if(reservation?.inProgress)return res.status(409).json({error:"request already in progress"});
+    const result=await withEntitlementLock(userId,"agent_installs",async(client)=>{
+      const count=await client.query("SELECT COUNT(*)::int count FROM agent_installs WHERE user_id=$1 AND status='active'",[userId]);
+      const ent=await client.query("SELECT e.enabled,e.limit_value FROM app_users u LEFT JOIN plan_entitlements e ON e.plan=u.plan AND e.feature=$2 WHERE u.id=$1 FOR UPDATE OF u",[userId,"agent_installs"]);
+      const row=ent.rows[0]; assertEntitlement({allowed:row.enabled!==false,limit:row.limit_value==null?null:Number(row.limit_value),plan:""}, "agent_installs",Number(count.rows[0].count));
+      const install=await installAgent(String(req.params.id),userId); if(!install)throw Object.assign(new Error("published agent not found"),{code:"NOT_FOUND"});
+      return {install};
+    });
+    await audit(userId,"agent.installed","agent_install",result.install.id,{listingId:String(req.params.id)});
+    await completeIdempotency(userId,"agent.install",idem,201,result); return res.status(201).json(result);
+  }catch(error:any){if(error?.code==="ENTITLEMENT_LIMIT")return res.status(429).json({error:"agent installation plan limit reached",feature:error.feature,limit:error.limit});if(error?.code==="NOT_FOUND")return res.status(404).json({error:"published agent not found"});return res.status(500).json({error:"failed to install agent"});}
+});const count=await initDb().query("SELECT COUNT(*)::int count FROM agent_installs WHERE user_id=$1 AND status='active'",[(req as any).userId]);await enforceLimit((req as any).userId,"agent_installs",Number(count.rows[0].count));const install=await installAgent(String(req.params.id),(req as any).userId);if(!install)return res.status(404).json({error:"published agent not found"});await audit((req as any).userId,"agent.installed","agent_install",install.id,{listingId:String(req.params.id)});res.status(201).json({install});}catch(error){if(error instanceof EntitlementError)return res.status(429).json({error:"agent installation plan limit reached",feature:error.feature,limit:error.limit});res.status(500).json({error:"failed to install agent"});}});
 router.get("/:id/install",requireAuth,async(req,res)=>{try{const id=String(req.params.id);if(!UUID.test(id))return res.status(400).json({error:"invalid agent id"});const r=await initDb().query("SELECT i.id,i.listing_id,i.version_id,i.status,i.installed_at,i.updated_at,l.name,l.version FROM agent_installs i JOIN agent_listings l ON l.id=i.listing_id WHERE i.listing_id=$1 AND i.user_id=$2",[id,(req as any).userId]);if(!r.rowCount)return res.status(404).json({error:"agent not installed"});res.json({install:r.rows[0]});}catch{res.status(500).json({error:"failed to load installation"});}});
 router.patch("/:id/install",requireAuth,async(req,res)=>{try{const id=String(req.params.id),status=String(req.body?.status||"").toLowerCase();if(!UUID.test(id)||!["active","paused"].includes(status))return res.status(400).json({error:"invalid agent or install status"});const r=await initDb().query("UPDATE agent_installs SET status=$1,updated_at=now() WHERE listing_id=$2 AND user_id=$3 RETURNING id,listing_id,version_id,status,installed_at,updated_at",[status,id,(req as any).userId]);if(!r.rowCount)return res.status(404).json({error:"agent installation not found"});await audit((req as any).userId,"agent.install.status_changed","agent_install",r.rows[0].id,{status});res.json({install:r.rows[0]});}catch{res.status(500).json({error:"failed to update installation"});}});
 router.delete("/:id/install",requireAuth,async(req,res)=>{try{const id=String(req.params.id);if(!UUID.test(id))return res.status(400).json({error:"invalid agent id"});const r=await initDb().query("DELETE FROM agent_installs WHERE listing_id=$1 AND user_id=$2 RETURNING id",[id,(req as any).userId]);if(!r.rowCount)return res.status(404).json({error:"agent installation not found"});await audit((req as any).userId,"agent.uninstalled","agent_install",r.rows[0].id,{listingId:id});res.status(204).end();}catch{res.status(500).json({error:"failed to uninstall agent"});}});
