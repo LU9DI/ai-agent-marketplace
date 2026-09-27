@@ -13,6 +13,7 @@
 
 ## Phase 3 — Product quality
 - [x] T014 Require an active installation for reviews and prevent self-reviews.
+- [x] T015 Make review eligibility atomic so an uninstall cannot race the active-install check.
 - [ ] T008 Verify public SEO/indexability surfaces and canonical URLs.
 - [ ] T009 Run a focused security review of outbound integrations and webhook/scheduler boundaries.
 - [x] T010 Verify production deployment/runtime behavior after each release.
