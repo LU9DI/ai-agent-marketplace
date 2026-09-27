@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { initDb } from "../core/db.js";
+import { initDb, withTransaction } from "../core/db.js";
 import { requireAuth } from "../middleware/auth.js";
 const router=Router();
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -10,9 +10,21 @@ router.post("/:listingId",requireAuth,async(req,res)=>{try{const rating=Number(r
 const listing=await db.query("SELECT id,owner_id FROM agent_listings WHERE id=$1 AND status='published'",[req.params.listingId]);
 if(!listing.rowCount)return res.status(404).json({error:"published listing not found"});
 if(String(listing.rows[0].owner_id)===String((req as any).userId))return res.status(403).json({error:"listing owner cannot review own agent"});
-const install=await db.query("SELECT id FROM agent_installs WHERE listing_id=$1 AND user_id=$2 AND status='active' LIMIT 1",[req.params.listingId,(req as any).userId]);
-if(!install.rowCount)return res.status(403).json({error:"an active installation is required to review this agent"});
-await db.query("INSERT INTO agent_reviews (id,listing_id,reviewer_id,rating,comment) VALUES (gen_random_uuid(),$1,$2,$3,$4) ON CONFLICT(listing_id,reviewer_id) DO UPDATE SET rating=EXCLUDED.rating,comment=EXCLUDED.comment,created_at=now()",[req.params.listingId,(req as any).userId,rating,comment??null]);res.status(201).json({ok:true});}catch{res.status(400).json({error:"failed to save review"});}});
+const reviewerId=(req as any).userId;
+await withTransaction(async (client) => {
+  // Lock the active installation while validating and writing the review so a concurrent
+  // uninstall cannot invalidate the eligibility check between SELECT and INSERT.
+  const install=await client.query(
+    "SELECT id FROM agent_installs WHERE listing_id=$1 AND user_id=$2 AND status='active' LIMIT 1 FOR SHARE",
+    [req.params.listingId,reviewerId],
+  );
+  if(!install.rowCount) throw Object.assign(new Error("active installation required"),{code:"ACTIVE_INSTALL_REQUIRED"});
+  await client.query(
+    "INSERT INTO agent_reviews (id,listing_id,reviewer_id,rating,comment) VALUES (gen_random_uuid(),$1,$2,$3,$4) ON CONFLICT(listing_id,reviewer_id) DO UPDATE SET rating=EXCLUDED.rating,comment=EXCLUDED.comment,created_at=now()",
+    [req.params.listingId,reviewerId,rating,comment??null],
+  );
+});
+res.status(201).json({ok:true});}catch(e){res.status((e as any)?.code==="ACTIVE_INSTALL_REQUIRED"?403:400).json({error:(e as any)?.code==="ACTIVE_INSTALL_REQUIRED"?"an active installation is required to review this agent":"failed to save review"});}});
 
 router.get("/:listingId",async(req,res)=>{try{
   if(!UUID.test(String(req.params.listingId)))return res.status(400).json({error:"invalid listing id"});
