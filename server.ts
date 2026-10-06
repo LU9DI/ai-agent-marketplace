@@ -6,6 +6,7 @@ import installRoutes from "./src/routes/installRoutes.js";
 import reviewRoutes from "./src/routes/reviewRoutes.js";
 import express from "express";
 import acquisitionRoutes from "./src/routes/acquisitionRoutes.js";
+import trustRoutes from "./src/routes/trustRoutes.js";
 import cors from "cors";
 import { initDb, closeDb } from "./src/core/db.js";
 import { metricsMiddleware, metricsSnapshot } from "./src/core/metrics.js";
@@ -73,6 +74,7 @@ app.use("/api/platform", platformRoutes);
 app.use("/api/agents", agentRoutes);
 app.use("/api/installs", installRoutes);
 app.use("/api/reviews", reviewRoutes);
+app.use("/api/trust", trustRoutes);
 
 
 app.get("/robots.txt", (req, res) => {
