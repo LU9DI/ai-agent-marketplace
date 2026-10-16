@@ -1,5 +1,0 @@
-import { Router } from "express";
-import { validateAgentListing } from "../domain/agents.js";
-const router=Router();
-router.post("/validate",(req,res)=>{try{validateAgentListing(req.body);res.json({valid:true});}catch(error){res.status(400).json({valid:false,error:error instanceof Error?error.message:"invalid agent listing"});}});
-export default router;
