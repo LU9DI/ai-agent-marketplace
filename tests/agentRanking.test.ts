@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { agentCatalogueOrderBy } from "../src/domain/agentRanking.js";
+import { agentCatalogueOrderBy, agentCapabilityFilterValue } from "../src/domain/agentRanking.js";
 
 test("top catalogue ranking computes install count without relying on a SELECT alias", () => {
   const orderBy = agentCatalogueOrderBy("top");
@@ -14,4 +14,9 @@ test("popular and recent catalogue ordering remain deterministic", () => {
   assert.equal(agentCatalogueOrderBy("popular"), " ORDER BY install_count DESC,updated_at DESC");
   assert.equal(agentCatalogueOrderBy("recent"), " ORDER BY updated_at DESC");
   assert.equal(agentCatalogueOrderBy("unknown"), " ORDER BY updated_at DESC");
+});
+
+test("encodes capability filters as JSON arrays for PostgreSQL JSONB containment", () => {
+  assert.equal(agentCapabilityFilterValue("web"), '["web"]');
+  assert.equal(agentCapabilityFilterValue("data analysis"), '["data analysis"]');
 });
