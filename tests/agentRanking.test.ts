@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { agentCatalogueOrderBy, agentCapabilityFilterValue } from "../src/domain/agentRanking.js";
+import { agentCatalogueOrderBy, agentCapabilityFilterValue, buildAgentCatalogueCountQuery } from "../src/domain/agentRanking.js";
 
 test("top catalogue ranking computes install count without relying on a SELECT alias", () => {
   const orderBy = agentCatalogueOrderBy("top");
@@ -19,4 +19,23 @@ test("popular and recent catalogue ordering remain deterministic", () => {
 test("encodes capability filters as JSON arrays for PostgreSQL JSONB containment", () => {
   assert.equal(agentCapabilityFilterValue("web"), '["web"]');
   assert.equal(agentCapabilityFilterValue("data analysis"), '["data analysis"]');
+});
+
+test("catalogue count query binds only parameters used by its predicates", () => {
+  assert.deepEqual(buildAgentCatalogueCountQuery("", ""), {
+    sql: "SELECT COUNT(*)::int count FROM agent_listings WHERE status='published'",
+    params: [],
+  });
+  assert.deepEqual(buildAgentCatalogueCountQuery("camera", ""), {
+    sql: "SELECT COUNT(*)::int count FROM agent_listings WHERE status='published' AND (name ILIKE $1 OR description ILIKE $1)",
+    params: ["%camera%"],
+  });
+  assert.deepEqual(buildAgentCatalogueCountQuery("", "web"), {
+    sql: "SELECT COUNT(*)::int count FROM agent_listings WHERE status='published' AND capabilities @> $1::jsonb",
+    params: ['["web"]'],
+  });
+  assert.deepEqual(buildAgentCatalogueCountQuery("camera", "web"), {
+    sql: "SELECT COUNT(*)::int count FROM agent_listings WHERE status='published' AND (name ILIKE $1 OR description ILIKE $1) AND capabilities @> $2::jsonb",
+    params: ["%camera%", '["web"]'],
+  });
 });
