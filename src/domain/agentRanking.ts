@@ -5,3 +5,7 @@ export function agentCatalogueOrderBy(sort: string): string {
   }
   return " ORDER BY updated_at DESC";
 }
+
+export function agentCapabilityFilterValue(capability: string): string {
+  return JSON.stringify([capability]);
+}
