@@ -9,3 +9,19 @@ export function agentCatalogueOrderBy(sort: string): string {
 export function agentCapabilityFilterValue(capability: string): string {
   return JSON.stringify([capability]);
 }
+
+export type AgentCatalogueCountQuery = { sql: string; params: string[] };
+
+export function buildAgentCatalogueCountQuery(q: string, capability: string): AgentCatalogueCountQuery {
+  const params: string[] = [];
+  let sql = "SELECT COUNT(*)::int count FROM agent_listings WHERE status='published'";
+  if (q) {
+    params.push("%" + q + "%");
+    sql += " AND (name ILIKE $" + params.length + " OR description ILIKE $" + params.length + ")";
+  }
+  if (capability) {
+    params.push(agentCapabilityFilterValue(capability));
+    sql += " AND capabilities @> $" + params.length + "::jsonb";
+  }
+  return { sql, params };
+}
